@@ -1,0 +1,151 @@
+\documentclass[a4paper, oneside, final]{memoir}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[british]{babel}
+\usepackage{mathtools}
+\newcommand{\defeq}{\vcentcolon=}
+\newcommand{\eqdef}{=\vcentcolon}
+\pdfminorversion=4
+% bedre orddeling Gør at der som minimum skal blive to tegn på linien ved
+% orddeling og minimum flyttes to tegn ned på næste linie. Desværre er værdien
+% anvendt af babel »12«, hvilket kan give orddelingen »h-vor«.
+\renewcommand{\britishhyphenmins}{22} 
+
+% Fix of fancyref to work with memoir. Makes references look
+% nice. Redefines memoir \fref and \Fref to \refer and \Refer.
+% \usepackage{refer}             %
+% As we dont really have any use for \fref and \Fref we just undefine what
+% memoir defined them as, so fancyref can define what it wants.
+\let\fref\undefined
+\let\Fref\undefined
+\usepackage{fancyref} % Better reference. 
+
+\usepackage{pdflscape} % Gør landscape-environmentet tilgængeligt
+\usepackage{fixme}     % Indsæt "fixme" noter i drafts.
+\usepackage{hyperref}  % Indsæter links (interne og eksterne) i PDF
+
+\usepackage[format=hang]{caption,subfig}
+\usepackage{graphicx}
+\usepackage{stmaryrd}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{listings}
+\usepackage{ulem} % \sout - strike-through
+\usepackage{tikz}
+
+\renewcommand{\ttdefault}{txtt} % Bedre typewriter font
+%\usepackage[sc]{mathpazo}     % Palatino font
+\renewcommand{\rmdefault}{ugm} % Garamond
+%\usepackage[garamond]{mathdesign}
+
+%\overfullrule=5pt
+%\setsecnumdepth{part}
+\setcounter{secnumdepth}{1} % Sæt overskriftsnummereringsdybde. Disable = -1.
+\chapterstyle{hangnum} % changes style of chapters, to look nice.
+
+\makeatletter
+\newenvironment{nonfloatingfigure}{
+  \vskip\intextsep
+  \def\@captype{figure}
+  }{
+  \vskip\intextsep
+}
+
+\newenvironment{nonfloatingtable}{
+  \vskip\intextsep
+  \def\@captype{table}
+  }{
+  \vskip\intextsep
+}
+\makeatother
+
+\usepackage[
+hyperref=auto,
+backend=biber,
+style=numeric,
+defernumbers=true
+]{biblatex}
+
+\bibliography{bibliography}
+
+\title{Literature Review of for my PhD}
+
+\author{Troels Henriksen (athas@sigkill.dk)}
+
+\date{\today}
+\pagestyle{plain}
+
+\begin{document}
+
+\frontmatter
+
+\maketitle
+\thispagestyle{empty}
+
+Conferences to check out:
+
+\begin{itemize}
+\item PLDI
+\item PACD
+\item ICS
+\item PPOPP
+\item CGO
+\item Compiler Construction
+\item FHPC
+\end{itemize}
+
+People:
+
+\begin{itemize}
+\item Cosmin Oancea
+\end{itemize}
+
+\begin{quote}
+  \fullcite{Bergstrom:2013:DFN:2517327.2442525}
+\end{quote}
+
+Multicore-focused, although it looks like it would work well on GPUs
+as well.  Permits several representations of ``same'' data (mostly
+regular and flattened) to coincide within program.  Not too dissimilar
+to Futhark's idea of representing both optimised and non-optimised
+cases.  Uses coercions, that are always reversible, to change
+representations, and array operations that are overloaded with respect
+to representation.  Not a bad idea.  I do not understand how they can
+avoid having too many expensive representation changes.  In fact,
+their own dense matrix multiplication example shows that they have a
+problem.
+
+\begin{quote}
+  \fullcite{Sharma:2013:DEC:2544173.2509509}
+\end{quote}
+
+Comparing the equivalence of loops at the (x86) assembly level.  Can
+be used to verify validity of optimisations, but you know.  Uses test
+cases to guess relationships between loop fragments, which are then
+attempted proven.
+
+\begin{quote}
+  \fullcite{Wienke:2012:OFE:2402420.2402522}
+\end{quote}
+
+Uses OpenACC and compares the resulting performance (both optimised
+and non-optimised) to Portland Group/PGI and hand-optimised OpenCL.
+All optimisation is here is manual, by modifying the OpenMP-like
+annotations of ACC.  Performance is decent and the annotation style of
+programming is apparently usable (if you like that sort of thing),
+although on complex benchmarks, they come quite short of matching
+OpenCL performance, which is ascribed to not using device-local
+memory.  One nice property is that it's fairly easy to add naive
+annotations, which can then be gradually improved and refined as
+necessary, given knowledge of the target hardware.
+
+We need to get our hands on their benchmark programs.
+
+Low level approach.
+
+\end{document}
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: t
+%%% End: 
