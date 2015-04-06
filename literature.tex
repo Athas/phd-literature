@@ -96,9 +96,16 @@ Conferences to check out:
 
 People:
 
-\begin{itemize}
-\item Cosmin Oancea
-\end{itemize}
+\begin{description}
+\item[Polyhedral model]: Saday Sadayappan, Albert Cohen, Cédric
+  Bastoul, F Irigoin Louis-/Noël/ Pouchet, Cosmin Oancea.
+\end{description}
+
+Stuff:
+
+\begin{description}
+\item[Rodinia]\hfill\\ A GPU-oriented benchmark suite.
+\end{description}
 
 \begin{quote}
   \fullcite{Bergstrom:2013:DFN:2517327.2442525}
@@ -142,6 +149,116 @@ necessary, given knowledge of the target hardware.
 We need to get our hands on their benchmark programs.
 
 Low level approach.
+
+\begin{quote}
+  \fullcite{Reyes:2012:AOI:2402420.2402523}
+\end{quote}
+
+First implementation of OpenCL support for OpenACC, the OpenMP-style
+standard for using accelerators.  Presents an OpenACC runtime
+(``Frangollo'') that could be used by other compilers - maybe
+non-OpenACC approaches as well?  The runtime supports both OpenCL and
+CUDA, and for OpenCL, can make use of heteroneous devices - even just
+multire CPUs - and respond intelligently.  Cannot do any real
+automatic optimisation, it seems.  Benchmarks include molecular
+dynamics.  Speedup seems good, although it's really hard to understand
+their figures.
+
+\begin{quote}
+  \fullcite{Stock:2014:FED:2594291.2594342}
+\end{quote}
+
+\begin{quote}
+  \fullcite{baghdadi2012pencil}
+\end{quote}
+
+PENCIL is an intermediate language designed similarly to OpenMP and
+family, with pragmas put on top of C.  However, PENCIL severely
+restricts the C dialect it supports in order to permit easier analysis
+by an auto-parallelising compiler.  The semantics are still basically
+sequential, but permitting annotations that can be used to indicate
+independence.
+
+Most interestingly, PENCIL supports ``access functions'', by which the
+access patterns of a function are given by defining another function.
+This other function uses some opaque macros that somehow indicate
+which writes and reads are performed.  It's unclear how effective or
+necessary this is in practice, but it's definitely a cool way to
+indicate memory access patterns.
+
+Unfortunately, this paper is pretty skimpy with the details.  It looks
+a bit like a preprint... I should find some more information.
+
+I found a presentation from HIPEAC'14 that suggests they get good
+OpenCL speedups on a (very) simple kernel.
+
+\begin{quote}
+  \fullcite{Campanoni:2012:HAP:2259016.2259028}
+\end{quote}
+
+Presents HELIX, a technique for automatic loop parallelization that
+assigns successive iterations of a loop to separate CPU threads.
+Parallelises ordinary sequential programs (SPEC CPU2000 used as
+benchmark).
+
+Makes intelligent use of SMT (Simultanous Multi-Threading AKA
+Hyper-Threading) by assigning each computation thread a ``helper
+thread'' that does latency reduction by taking responsibility for
+sending and receiving signals.
+
+Each iteration of a parallel loop executed on a separate core, with
+round-robin, but a trick is that the next iteration can be started
+before the previous iteration is completely done, as long as data
+dependencies have been satisfied.  In fact, as soon as the loop
+prologue for one iteration has completed, the prologue for the next
+iteration is begun.  For every data dependency $d$, a core will issue
+a $wait(d)$ before it uses it, and a $signal(d)$ once it is done with
+it.  This corresponds to sending signals between adjacent
+threads/cores, and means that different iterations can interleave in
+interesting ways.  It does mean that data dependencies between
+non-adjacent threads have to be communicated through the intervening
+threads.
+
+Only one parallel loop can run at a time, so an important question is
+which to parallelise.  They have an interesting algorithm based on
+creating a loop hierarchy graph.  Not sure we can use it in Futhark,
+but it's worth taking a closer look once we get closer.
+
+This paper is quite good, and the technique is actually wonderfully
+simple.
+
+\begin{quote}
+  \fullcite{Trojahner2009643}
+\end{quote}
+
+A distilled presentation of Qube, which is a language/calculus that
+uses a restricted (solvable) variant of dependent types to encode
+shape/index invariants in the type system, and thusly provide runtime
+guarantees.  Done by SaC people.
+
+Does not mention non-full indexing?  Same approach should work.
+
+Permits irregular arrays through a really nifty \textit{dependent
+  tuple} mechanism, where the type of the second element may depend on
+the first element.  This is a necessary encoding since their type
+system embeds shape information in arrays, and an irregular array
+would otherwise be ill-typed.
+
+Their branching construct imparts information to the type checker.
+All branching is checking whether a value is in some range.
+
+They call non-arrays (basic types, e.g. integers) \textit{quarks}
+because they are ``subatomic'' (with arrays being atomic).  Note that
+a tuple (possibly of arrays) is also a quark.
+
+Instead of SOACs, they have just \textit{with}-loops (as in SaC),
+which are general enough to represent \texttt{map}.  It is unclear how
+this impacts fusion, and whether it is powerful enough to represent
+other parallel primitives.  Of course, this is not the point of the
+paper, and I am quite certain that the type system can support the
+usual repertoire of SOACs.
+
+Type checking uses constraint solvers to solve subset inclusion.
 
 \end{document}
 
