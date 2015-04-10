@@ -68,7 +68,7 @@ defernumbers=true
 
 \bibliography{bibliography}
 
-\title{Literature Review of for my PhD}
+\title{Literature Review for my PhD}
 
 \author{Troels Henriksen (athas@sigkill.dk)}
 
@@ -234,7 +234,8 @@ simple.
 A distilled presentation of Qube, which is a language/calculus that
 uses a restricted (solvable) variant of dependent types to encode
 shape/index invariants in the type system, and thusly provide runtime
-guarantees.  Done by SaC people.
+guarantees.  Done by SaC people.  They support rank polymorphism in a
+cool way, and value polymorphism seems like an easy extension.
 
 Does not mention non-full indexing?  Same approach should work.
 
@@ -259,6 +260,12 @@ paper, and I am quite certain that the type system can support the
 usual repertoire of SOACs.
 
 Type checking uses constraint solvers to solve subset inclusion.
+
+A PhD thesis exists that has newer information.
+
+They do not permit multiplication in the index language, which is used
+to represent shapes statically.  This means that e.g. a flatten
+operation is not elegant.
 
 \end{document}
 
