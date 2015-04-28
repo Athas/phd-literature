@@ -228,6 +228,66 @@ This paper is quite good, and the technique is actually wonderfully
 simple.
 
 \begin{quote}
+  \fullcite{6008968}
+\end{quote}
+
+This paper presents compilation schemes (although called
+``transformations'') from high-level languages to GPU code (CUDA or
+OpenCL).  The languages being inspected are ArrayOL, an image/signal
+processing DSL, and Single Assignment C.
+
+The paper describes how SaC compiles to CUDA: outermost
+\texttt{with}-loops (essentially maps) become kernels, with all free
+variables in the loop body transferred to the GPU before launch.  Very
+straightforward approach, but seemingly with no effort made to take
+advantage of GPU hardware details.  At least none that are mentioned.
+
+Performance is good for the problem described in the paper (video
+scaling).
+
+Cite this when writing about kernel extraction.
+
+\begin{quote}
+  \fullcite{stavaaker2010compilation}
+\end{quote}
+
+Compiles Modelica to SaC, and SaC to CUDA.  Same approach as above.
+Mentions that SaC cannot handle data-sensitive allocations in kernels
+- unclear whether the allocation size is actually loop-variant, or
+maybe just too big.  Demonstrates that SaC does not copy back and
+forth between every kernel invocation, if the output of a kernel is
+immediately (and solely) used as the input to another kernel.
+
+Has a nice diagram showing how SaC \texttt{with}-loops are turned into
+kernels and kernel invocations.
+
+\begin{quote}
+  \fullcite{jay1996shape}
+\end{quote}
+
+Presents a totally static approach to shape analysis, somewhat similar
+to FISH (or however it is capitalised).  Defines a \textit{shapely
+  program} as one whose result shape depends solely on the input
+shapes - not their values.  Does not proceed (solely) by slicing, but
+also by language features.  A type Sz for vector sizes is introduced,
+and a corresponding shape-conditional branch construct.  For each term
+$t : T$, the paper associates a shape term $\#t : \#T$.  Evaluation of
+$\#t$ is simpler than $\#t$, but the point is that if $t$ has a shape
+error, then so does $\#t$, and $\#t$ can be fully evaluated as soon as
+the concrete shapes of inputs to $t$ are known.
+
+This approach is not as strong as dependently typed systems, but it is
+lightweight and easy to understand and implement.  Perhaps it could be
+paired with constraint solving for detecting errors statically.
+
+They mention that shape analysis of $fact 0$ will never terminate,
+since it contains a data conditional.  I also do not see how something
+like $filter$ could ever be handled this way, since it is technically
+data-sensitive, but still with useful known invariants.
+
+\section{HIPERFIT reading group papers}
+
+\begin{quote}
   \fullcite{Trojahner2009643}
 \end{quote}
 
@@ -266,6 +326,118 @@ A PhD thesis exists that has newer information.
 They do not permit multiplication in the index language, which is used
 to represent shapes statically.  This means that e.g. a flatten
 operation is not elegant.
+
+\begin{quote}
+  \fullcite{FromContractsTowardsDependentTypes}
+\end{quote}
+
+Describes SaC's approach to statically optimising runtime bounds
+checks (and related) at compile-time, using partial evaluation.  Very
+similar to Futhark's approach, although older, and more general, as
+they also consider arrays whose rank is statically unknown (including
+whether it is actually a scalar).
+
+However, where Futhark uses the general language to compute
+assertions, SaC uses a special fine-grained tailor-made functions to
+compile what they call \textit{contracts}.  This is partially due to
+efficiency concerns (as they possibly have far more checks than we
+do), and partially due to some strange comment about the validation
+code also needing validation, which may cause circularity.  I do not
+buy this latter argument, or maybe I just do not understand it.
+
+They are able to derive knowledge from evaluating their contracts,
+which is nice.
+
+The paper goes through various designs of contracts, and end up with
+something that is very much like the one in Futhark, with explicit
+evidence (what is in Futhark called ``certificates'').  And this was
+written five years before I came up with Futhark's design!  Convergent
+evolution tends to suggest that something is at least a local maximum.
+
+The approach in the paper is more fleshed out, however, and applies to
+every construct in the language (which is not the case in Futhark as
+of this writing).
+
+The use of \texttt{after\_guard} seems a little clumsy and fragile,
+and in fact limits an optimisation on page 14, where, conceptually,
+\texttt{let a[i] = v in a[i]} should simplify to \texttt{v}
+\textit{but keep the bounds checks as a pre/post-condition for
+  validity}.  This is something I will do better once I flesh out the
+system in Futhark.
+
+There is a (sketch) proof of validity, but honestly, it is quite
+obvious to me that their technique is sound.
+
+I did not know that such terms as \textsc{common subexpression
+  elimination} and \textsc{function inlining} deserved smallcaps.
+
+When the paper mentions they use ``partial evaluation'' to discharge
+the assertions statically, this really means normal small-scale
+optimisations, like constant folding and shape inference.  This is
+fine, and the same that Futhark does, but I had hoped for something
+more sophisticated.
+
+We must cite this paper soon.  Even if I had no about it at the time I
+developed the Futhark assertion system, the similarities are striking.
+
+The main difference is that in Futhark, we also have a strong type
+system component (for array sizes), with certificates/contracts used
+to ensure that \texttt{reshape} operations are valid.
+
+\begin{quote}
+  \fullcite{AnArrayOrientedLanguageWithStaticRankPolymorphism}
+\end{quote}
+
+The authors present a language, Remora, that is essentially typed APL
+or J.  Only a core language; not particularly pleasant to write in.
+Has only regular arrays, which they claim is ``like APL''.  Must be a
+matter of perspective of the frame/cell definition.  Quite nice
+explanation of the frame/cell composition and automatic
+replication. Does the term ``unspecified rank'' have a specific
+meaning?  I think it just means ``arbitrary''.
+
+Conclusion: fairly standard approach with a restricted language for
+dependent types, but it is interesting that it codifies the
+automatic/implicit array expansion found in J.
+
+\begin{quote}
+  \fullcite{Xi:1999:DTP:292540.292560}
+\end{quote}
+
+A condensed (extended abstract) presentation of Dependent ML.  This is
+basically the OG of practically useful restricted dependent types, and
+should be the primary inspiration if we decide to go in this
+direction.  Essentially all of ML is supported, which is more than
+what I need.  Superficially, the approach seems very similar to
+Haskell GADTs, but with the type-checker aware of the constraint
+domain, where it presumably does something intelligent via constraint
+solving.  The types of the constraint language are called
+\textit{index sorts} - this has confused me in previous papers, but it
+must have been an established term at least since this paper, and we
+should do the same in Futhark.
+
+What does ``conservativity over ML'' mean?  That it does not affect
+operational semantics?  That it has erasure?
+
+Important point. DML does not make more programs typeable than ML, but
+tries to assign more accurate types to existing programs (and maybe
+rejecting some of them).
+
+The approach is that of an explicitly typed internal language
+$ML_{0}^{\Pi}(C)$, and an implicitly typed external language, with the
+latter being transformed through elaboration into the former.  This is
+also what we do in Futhark, except that our internal language is much
+less principled.
+
+(What is the constraint language $C$?)
+
+Adds the notion of existential dependent types (also called weak
+dependent sums) to express non-strict invariants, such as the size of
+the return of \texttt{filter}.
+
+Encodes arbitrary propositions $P$ as singletons of sort $\{\ ()\ :\
+unit\ |\ P\ \}$ - if an index variable of this type is in scope, then
+$P$ must be true!  Nice and elegant.
 
 \end{document}
 
