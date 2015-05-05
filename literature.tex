@@ -30,7 +30,7 @@
 \usepackage{amssymb}
 \usepackage{amsmath}
 \usepackage{listings}
-\usepackage{ulem} % \sout - strike-through
+\usepackage[normalem]{ulem} % \sout - strike-through
 \usepackage{tikz}
 
 \renewcommand{\ttdefault}{txtt} % Bedre typewriter font
@@ -59,14 +59,25 @@
 }
 \makeatother
 
+
 \usepackage[
 hyperref=auto,
 backend=biber,
-style=numeric,
+style=numeric-comp,
 defernumbers=true
 ]{biblatex}
 
-\bibliography{bibliography}
+% The following two declarations gives me underlined and properly
+% wrapped titles in the \fullcites.
+\DeclareFieldFormat*{title}{#1}
+\DeclareFieldFormat*{titlecase}{
+    \ifdef{\currentfield}
+      {\ifcurrentfield{title}
+         {\usefield{\uline}{\currentfield}}%
+         {#1}}
+      {#1}}
+
+\addbibresource{bibliography.bib}
 
 \title{Literature Review for my PhD}
 
@@ -80,7 +91,6 @@ defernumbers=true
 \frontmatter
 
 \maketitle
-\thispagestyle{empty}
 
 Conferences to check out:
 
@@ -106,6 +116,8 @@ Stuff:
 \begin{description}
 \item[Rodinia]\hfill\\ A GPU-oriented benchmark suite.
 \end{description}
+
+\section*{Assorted paper notes}
 
 \begin{quote}
   \fullcite{Bergstrom:2013:DFN:2517327.2442525}
@@ -163,10 +175,6 @@ multire CPUs - and respond intelligently.  Cannot do any real
 automatic optimisation, it seems.  Benchmarks include molecular
 dynamics.  Speedup seems good, although it's really hard to understand
 their figures.
-
-\begin{quote}
-  \fullcite{Stock:2014:FED:2594291.2594342}
-\end{quote}
 
 \begin{quote}
   \fullcite{baghdadi2012pencil}
@@ -285,7 +293,7 @@ since it contains a data conditional.  I also do not see how something
 like $filter$ could ever be handled this way, since it is technically
 data-sensitive, but still with useful known invariants.
 
-\section{HIPERFIT reading group papers}
+\section*{HIPERFIT reading group papers}
 
 \begin{quote}
   \fullcite{Trojahner2009643}
@@ -438,6 +446,82 @@ the return of \texttt{filter}.
 Encodes arbitrary propositions $P$ as singletons of sort $\{\ ()\ :\
 unit\ |\ P\ \}$ - if an index variable of this type is in scope, then
 $P$ must be true!  Nice and elegant.
+
+\begin{quote}
+  \fullcite{Stock:2014:FED:2594291.2594342}
+\end{quote}
+
+\textit{This paper has a really nice style: they present the runtime
+  for the unoptimised program, then the optimised program, already on
+  page 2 before they go into any details.  It is very clear what they
+  are trying to solve, and what results they get.}
+
+Exploiting the associativity of operations\footnote{...and assuming
+  that floating point operations are associative.} involved in stencil
+computations, the authors reorder the operations to enhance register
+usage and lower memory pressure.  This is particularly useful for
+higher-order stencils (``weighted averages over multiple neighboring
+points along each dimension''), as these have high arithmetic
+intensity.  These ought to be more efficient as computation dominates
+memory access, but due to register pressure, an excessive amount of
+spilling happens.
+
+This could also be useful for GPGPU: whilst there is no register
+spilling per se (everything is basically a L1 cache), minimising
+register usage increases occupancy, and memory accesses are super
+slow.
+
+A modern multicore computer can provide 0.25 bytes/flop.  An example
+$3 \times 3$ (order 1) stencil requires 16 bytes per 17 flops, and so
+is bandwidth-bound.  A $5 \times 5$ (order 2) convolution has a ratio
+of 32/100, and so is probably also bandwidth-bound.  But a $7 \times
+7$ (order 3) stencil will be roughly half that, that is, 16/100, and
+so should be CPU-bound.  It is not, because the register pressure
+worsens, causing each value to be reloaded from memory many times.
+This is due to inner (unrolled) loops where the compiler reuses
+registers to avoid loads, but eventually runs out of registers (order
+2 requires 20 and order 3 requires 42), leading to spills.
+
+Why do they write ``a distinct C code''?  It should just be ``distinct
+C code''.
+
+It is not enough to simply reorder the operations accumulating in a
+single output point, instead, we must interleave the accumulation of
+different output points.  Reordering operations is the only change,
+however.  In their example, the original code is an ``all-gather''
+stencil, and the optimised version is ``scatter-gather''.  For an $n
+\times n$-stencil, the transformed version involves a $n \times 1$
+read-set updating a $1 \times n$ write-set in an all-to-all fashion.
+Compared to the immediate version, this reduces register pressure from
+$n^{2}$ to $n$ (approximately).  Specifically, the number of memory
+stores is significantly increased, but the number of loads is
+dramatically decreased.
+
+The stencil representation is extracted using polyhedral concepts,
+after which an analytical model is used to prune scatter/gather
+variants, code generated, and finally machine-specific autotuning
+performed.
+
+``Multidimensional retiming is in essence a shift of an iteration set
+by a constant quantity along one or more of its dimensions.''  The
+idea seems to be to tag each statement with its \textit{schedule}, a
+description of when it is executed within the iteration space, then to
+apply a \textit{retiming vector} that linearly moves the statement.
+If the entire program region to optimise fits the polyhedral model,
+polyhedral dependence analysis can be used to determine whether a
+specific retiming vector preserves the relative order of all dependent
+statements.
+
+A central idea seems to be that even if one statement depends on
+another, if they have a certain structure (in-place update with
+associative operator), their dependence commutes, and they can
+therefore be reordered.  For convolution stencils, all dependencies
+are commutative.
+
+It is unclear whether this matters on the GPU.  The authors have
+previous GPU experience, yet never talk about this in the paper.  The
+setting is purely sequential and the optimisation directly assumes
+sequential execution.
 
 \end{document}
 
