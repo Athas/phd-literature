@@ -523,6 +523,535 @@ previous GPU experience, yet never talk about this in the paper.  The
 setting is purely sequential and the optimisation directly assumes
 sequential execution.
 
+\begin{quote}
+  \fullcite{McDonell:2013:OPF:2500365.2500595}
+\end{quote}
+
+Main/original Accelerate paper.
+
+Lots on sharing, which is not relevant to non-embedded languages.  The
+approach seems good if we ever need to do anything in that direction.
+There is a lesson here: the paper contributes two very different
+solutions - one for recovering sharing for embedded DSLs, and one for
+optimising producer-consumer loops.  The intersection of audiences for
+these two is very small.
+
+Filter is decomposed into primitives (the usual map-scan-permute
+song-and-dance), but these cannot be fused, as they are too primitive.
+
+It is unusual to attribute the terms ``producer'' and ``consumer'' to
+language constructs - these are usually applied to the operations
+involved in a concrete fusion operation.  ``Generators'' and
+``reducers'' may be better terms.
+
+The important constructor in their representation of delayed arrays
+(\texttt{DelayedArray}) is the constructor \texttt{Step}, whick takes
+an underlying array, and performs an arbitrary index-space and
+value-space transformation.  Cool and flexible.  They also have
+\texttt{Yield}, which is a function from index to value, so less
+information.
+
+Accelerate provides two functions for mapping index to value - one
+with flat indexes, and one with nested indexes.  This is presumably
+useful for avoiding modulo and division operations.
+
+\begin{quote}
+  \fullcite{clifton2014embedding}
+\end{quote}
+
+Presents the skeleton instantiation/code generation scheme of
+Accelerate.  Mostly in the style of ``we wrote this code, now we will
+explain how it works''.  Quite nice, and more people should write
+stuff like that, but it is pretty basic, with little new information.
+
+The section on dead-code elimination is truly bizarre.  Why don't they
+just do normal dead-code elimination?  Maybe due to the delayed or
+skeleton approach?
+
+\begin{quote}
+  \fullcite{Feautrier96automaticparallelization}
+\end{quote}
+
+Presents parallelism optimisation with the polytope model.  Quite a
+nice basic introduction.  Defines the idea of finding a partial order
+$\prec_{//}$ for which any extension (turning it total by adding more
+constraints, i.e, defining actual execution order) gives the same
+result as the original program.  In a program-as-written we are given
+a strict total order (the order that instructions are written).
+Clearly not parallel (except if the language has some built-in
+parallelism...).  But some statements are for-real dependent,
+specified with the $\delta$ relation.  Thus, the coarsest valid
+partial order is
+\[
+\prec_{//} = (\prec\ \cap\ \delta)^{+}
+\]
+
+Of course, $\delta$ is typically not feasible to compute.  Except in a
+functional data-parallel program, where it is quite trivial.
+
+The application in the paper is for \texttt{do}-loop nests.  The basic
+idea is for each statement \texttt{S} to be associated with an
+iteration vector \texttt{I} that contains the loop indices for
+surrounding loops, yielding the tuple \texttt{$\langle$S, I$\rangle$}.
+The vector is constrained by the loop bounds.  If these are affine
+functions of the surrounding loop counters and structure parameters
+(array sizes?), then the iteration domain of statement \texttt{S} is
+an integer vector inside a Z-polytope.
+
+\begin{quote}
+  \fullcite{Holk:2014:RMM:2660193.2660244}
+\end{quote}
+
+This is a wonderful paper!  Good work, and a pleasure to read.  A
+shame the empirical evaluation is terrible and the weaknesses of the
+approach are not presented well.
+
+Presents Harlan, a high-level language for GPGPU with Scheme syntax
+that supports ADTs.  Harlan makes use of region-based memory
+management to support transfor of data structures from CPU to GPU.  It
+supports hygienic macros, which is probably the way to go for these
+kinds of languages.
+
+The work is motivated by the observation that GPUs and CPUs are
+converging in architecture, and thus a programming high-level model
+covering both should be devised.  The authors mention that because
+Harlan compiles to OpenCL, it is trivial to switch between CPU and GPU
+execution.  This is only the case if you are willing to accept sub-par
+performance.
+
+Uses the language construct \texttt{kernel} for a
+\texttt{map}/texttt{zipWith}.  Seemingly no other parallel constructs.
+Harlans permits apparently arbitrary IO, but compilation will fail if
+these are put inside of a \texttt{kernel} function.
+
+``the reduction operation is implemented as a macro in Harlands
+runtime library'' - uh?  I wonder if they mean a language-level macro.
+
+Irregular arrays are supported, as well as ADTs permitting DAGs and
+trees.  Cycles are not permitted I guess?  Seemingly free-form
+\texttt{lambda} forms are also permitted.  In fact, kernels can
+produce closures which are then applied on the host!  You can also
+pass e.g. vectors of functions into a kernel, which is fairly cool -
+they term this ``multiple-program single-data''.  This is implemented
+by defunctionalisation, where each \texttt{lambda} gives rise to one
+constructor in an AST, with value parameters corresponding to the
+captured variables.  A concrete closure is then just a value with this
+constructor.  This means that application involves serious branching,
+proportional with the number of different \texttt{lambda}s of that
+type.  The branch divergence will be horrible.  The authors mention
+that this can be limited with flow analysis, but that it has not been
+a problem yet.  I think they are nowhere near peak GPU performance
+with this design.  Perhaps this humble ambition is why they consider a
+single programming model to be suitable for both GPU and CPU?
+
+The memory region system is used to easily copy data structures from
+CPU to GPU - since it is known exactly in which regions a structure is
+stored, these can be copied immediately, instead of following
+pointers.  The better the region inference, the more fine-grained this
+copying can be, I think.  This region inference system is more
+flexible than Futharks memory blocks, but it really solves a different
+problem, I think.  And it may be more difficult to do allocation
+analysis.  There are some strange properties in the region system, and
+I wonder whether it is expressive enough, but I am not an expert in
+the matter.  For example, in a closure, the entire environment must
+fit in the same region.  Does this mean that we often end copying
+between regions if we end up with contradictions?  Such a
+contradiction can only occur if two values is constrained to two
+different regions, but I don't think that will ever happen - in the
+extreme end, everything can be put in the same region.  Of course,
+this is bad, since the region is the unit of transfer between CPU and
+GPU, and garbage collection is not done within regions (yet?).
+Regions are resized on-demand, so there is a bit of indirection here -
+a region is its size and a pointer to the block.  Since allocation is
+not possible within a kernel, the program will fail at runtime if the
+region does not have enough space available.  How do they handle race
+conditions where multiple threads of the same kernel will try to
+allocate from the same region?  And how do they handle tail-calls
+within a region allocation?
+
+The Harland compiler is implemented in Scheme in a nanopass style.
+This is a wonderful style, but it does not seem feasible in a
+statically typed compiler implementation language - at least not if
+you want to change the annotations.  But maybe I can do something...
+
+ADTs are compiled to C unions.  I am not sure how recursive ADTs are
+handled, or whether they work well on the GPU.  \texttt{match} becomes
+chains of \texttt{if} statements, which has horrible branch divergence
+properties.
+
+Nested kernels are sequentialised.  The outer kernel is always
+preserved as parallel.  Apparently no distribution or flattening.
+That is very bad.  In fact, it is the same approach as taken by the
+Futhark prototype OpenCL backend - proof of concept, but nowhere near
+production-ready.  Although they perform several other optimisations
+(simple flattening and lazy copying from GPU to CPU) that greatly
+improve the situation.
+
+In OpenCL, recursive functions are translated to \texttt{goto} and
+explicit stacks (``trampolining'', although they do not use this
+term).  As far as I know, this is basically what you have to do.
+
+Simple producer-consumer fusion between \texttt{kernel}s
+(=\texttt{map}) is done, as well as simple
+\texttt{kernel}-\texttt{reduce} fusion and flattening of
+\texttt{kernel} nests.
+
+The evaluation is weak.  Some trivial microbenchmarks (vector addition
+and dot product) are compared with highly-optimised CUBLAS, where
+Harlam does badly in the former and well in the latter.  For N-Body
+simulation, the comparison is with Accelerate, not a hand-written
+optimised CUDA version.  They do beat Accelerate.  The ray tracing
+example is not compared with anything, but simply shows how execution
+time scales with number of nodes.
+
+Overall, it is admirable to construct a programming language that is
+as flexible as traditional sequential languages, yet still permit
+fairly transparent execution on GPU.  However, I do not believe that
+their compilation strategy is able to take full advantage of the GPU
+hardware.  Branch divergence is a serious cost, and efficient used of
+shared memory and coalesced access is necessary to get good
+performance from GPU.  While it is possible to get code to run at all
+on the GPU, this does not mean that it will be efficient.  Thus, I do
+not believe that Harland is a convincing argument that a unified
+programming model is feasible - or at least, this model is not.
+
+\begin{quote}
+  \fullcite{rodinia}
+\end{quote}
+
+Presents Rodinia, a moderm parallel benchmark suite.  The suite
+consists of GPU and CPU implementations of fairly simple programs.
+The paper claims ``four applications and five kernels'' (unclear on
+the specific difference), but the Rodinia 3.0 tarball I fetched has 18
+benchmark directories, including OpenCL implementation, whilst the
+paper only claims CUDA.
+
+``Berkeley Dwarfs'' are used to guide the choice of benchmarks.  A
+dwarf is defined as ``a dwarf is an algorithmic method that captures a
+pattern of computation and communication''.  Rodinia does not (in this
+paper) have a benchmark for every dwarf, but some dwarfs have multiple
+benchmarks.
+
+The benchmarks are very varied in their quality of implementation, but
+I generally do not think they are written very well.  They can be hard
+to understand due to including (far) too much irrelevant code, and
+sometimes due to manual constant-folding.  For some reason, the paper
+does not do a good job of describing what the benchmarks \textit{do},
+so here are my own notes:
+
+\begin{description}
+\item[HotSpot] Fairly trivial rank-1 2d stencil, although with weird
+  edge conditions.
+\item[Kmeans] Convergence loop, body is a histogram, with reduction of
+  the points falling in each of the buckets (but we must also know the
+  size of each bucket).
+\item
+\end{description}
+
+\begin{quote}
+  \fullcite{Scholz:2003:SAC:967499.967501}
+\end{quote}
+
+A fairly big SaC paper from 2003.  Presents some of the problems
+involved with doing high-performance computing in functional
+languages, notably the problem with random-access arrays.  The paper
+does not seem particularly focused on parallelism.  The focus on
+efficient compilation is very admirable.  The authors argue for the
+value of maintaining a syntax similar to C:
+
+\begin{quote}
+  The choice of a C-like syntax is motivated by two
+  considerations. First, it allows programmers with an imperative
+  background to have a smooth transition into the functional
+  paradigm. Second, it facilitates the compilation process, since it
+  allows some program parts to be mapped directly to C.
+\end{quote}
+
+I find these to considerations very dubious.  First, one cannot
+pretend that a language is imperative merely because it has curly
+braces.  Second, no non-trivial compilation can simply map to another
+target language, and given how simple C is, those features could be
+simply mapped to any other low-level target language.  Of course,
+there is no doubt whatsoever that it is a massive advantage for a
+language to have curly braces.
+
+SaC also possesses an interesting type system supporting array rank
+polymorphism, as well as a module system and FFI.  One of the most
+impressive aspects of SaC is indeed that it feels like a complete
+language.
+
+Two interesting quotes:
+
+\begin{quote}
+  The most challenging design problem in this context is to let shape
+  inference accept all shape correct programs without making the type
+  system undecidable.
+\end{quote}
+
+and
+
+\begin{quote}
+  As a consequence, the type system turns out to be ambiguous wrt. the
+  shape information, i.e., the extent to which shapes are statically
+  inferred does not depend on the type system but on the
+  implementation of the type inference algorithm actually applied.
+\end{quote}
+
+This is very similar to the Futhark approach!  Except, of course, that
+Futhark does not support rank polymorphism, so our problem is simpler.
+Then again, Futhark is a core language.
+
+The SaC \texttt{cat} (concatenation) construct seems pretty powerful.
+
+The most general array building block of SaC is the
+\texttt{with}-loop, which seems inspired by the loop construct of
+SISAL.  Three forms of \texttt{with}-loops are defined:
+
+\begin{description}
+\item[genarray] which creates arrays from an index space (so something
+  like \texttt{map} over \texttt{iota}).
+\item[modarray] which modifies existing arrays (general \texttt{map}?).
+\item[foldarray] which performs reductions/foldings.
+\end{description}
+
+\texttt{scan} appears missing, and I am skeptical that
+\texttt{with}-loop-folding (fusion/deforestation -- actually
+\texttt{map}-\texttt{map} fusion) is as powerful as the fusion algebra
+possible with more high-level SOACs.  However, \texttt{with}-loops
+interact with the array rank polymorphism in a supremely nice way that
+SOACs do not.  Like Futhark, SaC also makes it the programmers
+responsibility to specify an associative and commutative function for
+reduction.  \texttt{modarray} can express some things that are
+inconvenient in Futhark, e.g:
+
+\begin{verbatim}
+double[*] EmbeddedAdd( double[*] small, int[.] offset, double[*] large)
+{
+  res = with( offset <= iv < offset + shape(small))
+  modarray( large, iv, large[iv] + small[iv-offset]);
+  return( res);
+}
+\end{verbatim}
+
+This modifies the elements of \texttt{large} in a specified interval.
+
+As an aside, the similarity of SaC to C breaks down rapidly from here
+on.  I think the choice of name is poor.
+
+I did not study the type system that closely, but it seems decent.
+
+Apparently, the SaC compiler is able to reorder the iteration space of
+\texttt{with}-loops to optimise cache locality, at least when the loop
+nesting depth can be statically determined.  Reference counting is
+used to execute \texttt{modarray}s in-place when possible.
+
+This is again odd:
+
+\begin{quote}
+  Last not least, the strong syntactical similarity between the two
+  languages allows the compilation efforts to be concentrated on
+  adequate array representations and on optimizing the code for array
+  operations.
+\end{quote}
+
+I do wonder how many of the oddities of C have been adopted.  The
+scalar language itself is trivial, so I have a hard time believing it
+is much of a win.
+
+Can \texttt{with}-loops be nested?  There is no way to write it
+explicitly, but fusion or program composition may cause them to arise,
+in which case distribution or flattening could be useful.
+
+\texttt{With}-loop-folding has some interesting quirks compared to
+normal \texttt{map}-\texttt{map} fusion, due to the fact that
+\texttt{with}-loops can be over just a slice of the input array.  It
+is possible to fuse a producer that maps over one slice with a
+consumer that maps over a different slice, and the result will be a
+special \texttt{with}-loop (using an internal representation with
+\texttt{genarray}s) that has different operations for different slices
+of the index space.  This seems much like simply having branches
+inside the functions, although perhaps this fuses better.
+
+A \texttt{With}-loop compilation scheme is presented that tries to
+exhibit good spatial locality.
+
+\begin{quote}
+  \fullcite{halvorsen2012calculating}
+\end{quote}
+
+Esben Halvorsens paper on basic multivariate calculus.  This
+exposition is actually pretty good.  There is one dubious sentence:
+
+\begin{quote}
+  It could also be that it is simply more descriptive for the
+  fluctuations of a pricing function to know the change in value over
+  a larger amount of time, rather than at an instant.
+\end{quote}
+
+This seems a bit of a stretch.
+
+The main contribution of the paper is a (correct) Haskell
+implementation of an automatic differentiation scheme presented in
+another paper.  The approach is based on overloading arithmetic
+operations so that they do not compute results as such, but instead
+create an infinite (lazy) tree of derivatives instead.
+
+To implement automatic differentiation in Haskell, instances of the
+numeric type classes are defined.  This is a classic trick in Haskell,
+but really just a Haskell hack.  It breaks down rapidly (the author
+notes an incomplete \texttt{Ord} definition for functions), but
+permits a nicer syntax.
+
+I am not a fan of the type classes imposed on functions.  I do not
+believe the former is easier to read than the latter: It also risks
+type safety, as suddenly every number becomes a constant function from
+an arbitrary argument to itself.
+
+\begin{verbatim}
+*> exp*sin(cos + 2*id + 1) $ 3
+-5.418932433500644
+*> (\x -> exp x*sin(cos x + 2*x + 1)) 3
+-5.418932433500644
+*> 1 "foo"
+1
+\end{verbatim}
+
+A big question is whether it is possible to use this approach to
+generate code from the derivatives, rather than Haskell
+(pseudo-)functions.  This runs into the same issues as other language
+embeddings (see Accelerate).  In this case, one could perhaps hide the
+Haskell standard library and only expose "safe" primitives.  It must
+be more abstract!
+
+\begin{quote}
+  \fullcite{Blelloch:1996:PTS:232629.232650}
+\end{quote}
+
+The ``main'' NESL paper, or at least the one that presents the
+rigorous cost model (based on \textit{depth}, \textit{work}, and
+\textit{sequential space}) that is perhaps the most defining trait of
+NESL from an academic perspective.  The idea behind the ``provably
+efficient'' implementation is to assign each language construct a
+cost, and prove that the mapping to a concrete machine maintains those
+costs.  I assume that this doesn't mean ``provable'' with respect to
+the actual code implementing the compilation (which is probably still
+an unsolved problem).  This idea has been developed in an earlier
+paper, but the application to NESL contains two novelties:
+
+\begin{itemize}
+\item Arrays and certain array operations are considered primitive, as
+  they cannot be efficiently emulated.
+\item Space is now part of the cost measure.
+\end{itemize}
+
+The time part of the cost model consists of a DAG representing
+sequential control dependencies.  The number of nodes corresponds to
+the amount of work, and the depth of the DAG to the work depth.
+
+The space part is ``an accounting of the reachable space used by a
+sequential implementation of the language''.
+
+The paper uses an intermediate language with explicit array allocation
+into which C0re-NESL is translated.  This array language is processed
+by a machine, P-CEK($q$), which works by keeping a queue of
+threads/states that are ready to execute.  On each step, the machine
+executes the first $q$ of these threads.  Thus, $q$ represents the
+parallelism of the machine.  This smells a lot like task parallelism.
+The P-CEK($q$) machine is mapped to concrete hardware to validate the
+entire cost model.  In the end, it is shown that a NESL program with
+work $w$, depth $d$, and using $s$ sequential space will run in $O(w/p
++ d \log(p))$ time and $O(s + d p \log(p))$ space, on $p$ processors
+of either a butterfly network (?), hypercube, or CRCW PRAM.  One worry
+I have is that the cost model is incompatible with an efficient
+compilation to vector hardware (i.e. GPU).  Interestingly, it is
+mentioned that the implementation in the paper does not correspond to
+their extant NESL implementations, which used flattening.  I wonder if
+any implementations were ever made using this provably efficient cost
+model.
+
+NESL is a simple functional language - apart from I/O and random
+number generation, it is pure.  It supports polymorphic types,
+higher-order functions, and is call-by-value.  Parallelism is explicit
+via parallel mapping and other primitives.  NESL has built-in support
+for irregular arrays.  In the Core-NESL used in the paper, scan is a
+primitive operation supported for only two operators (maximum and
+addition).
+
+The cost model makes use of a mutable store - interesting choice for
+an eagerly evaluated pure language.  Evaluation takes an environment
+$E$, a store $\sigma$, a set of ``root locations'' $R$, and evaluates
+the expression $e$, yielding a value, a new store $\sigma'$, and a
+computation DAG $g$ and space cost measure $s$.  I think the $R$
+points at all the memory that may be used in the future, and is used
+solely to compute the space cost measure.  This can be seen in Figure
+4, where a function $space(R,\sigma)$ is defined.  This function
+morally computes the size of the set of all values reachable from $R$
+in $\sigma$, and is used in the evaluation relation on Figure 2.
+
+Core-NESL is compiled to an imperative array language using fork-join
+parallelism (at least the fork part - the join is implicit).  One fork
+instruction can start any number of threads (given by an integer
+argument).  The same evaluation judgement is used as for Core-NESL.  A
+theorem is given that states that if a Core-NESL expression can be
+evaluated to some result $v$ with dependency graph $g$ and space
+requirement $s$, then the corresponding array language expression can
+be evaluated to the same $v$, with a dependency graph that is at most
+a constant greater than $g$, and space cost that is at most the same
+constant greater than $s$.
+
+The array language (why didn't they give it a name?!) is also what is
+executed by the P-CEK($q$) machine.  The evaluation relation takes a
+store and a queue of substates, and produces a new store (actually it
+looks more like a store update) and queue of substates.  A substate is
+a triple $(C,E,K)$ which, together with the store, corresponds roughly
+to a sequential machine state (CESK), with $C$ an expression, $E$ the
+environment, and $K$ the continuation.  A continuation is either
+empty, a function argument to be evaluated, a function to be applied,
+or a finishing/finished thread (which contains a value, or rather, a
+location into the store).
+
+When evaluating, each substate can transition into a single new
+substate, fork off a group of new substates, or terminate.  New
+(forked) substates are added add the \textit{front} of the queue(?),
+maintaining their order relative to the original substates.  The
+evaluation function for P-CEK($q$) is nondeterministic for $q > 1$
+(remember that $q$ is the degree of parallelism in the machine), and
+it is possible to have race conditions.  The authors claim that this
+does not happen with any of the array programs created by the
+translation from Core-NESL (and I believe them).  It is quite
+interesting that they explicitly mention that the ability to scale the
+amount of parallelism with the $q$-parameter is important to
+preserving efficiency (they mention space bounds).  Actually, the
+theoretical treatment would fall apart if they did not.  Yet still, so
+many practical implementations of parallel languages dial up the
+parallelism to useless and counterproductive levels.  It is amusing
+that such a practical performance consideration only shows up in the
+formal treatment.
+
+Figure 8 shows the P-CEK($q$) evaluation relation.  I find it fairly
+difficult to read.  The case for \texttt{scanadd} is particularly
+mystifying.
+
+The trick behind making this perform (in particular, $O(n)$ work
+scans) is the use of the \textit{fetch-and-add}-operation, also called
+multiprefix.  In this operation, each processors know an address and
+has an integer value $i$.  In parallel, all processors can
+automatically fetch the value from the address, whilst incrementing
+the value by $i$.  The add is stable - if two processors make the
+request simultaneously, the one with the smaller ID will access the
+counter first.  I am skeptical about the efficient execution of this
+on contemporary hardware.
+
+In the end, this is a theoretical paper.  It is argued that this
+provably efficient implementation is possible, but I have not found an
+empirical demonstration.  This is a shame, because the approach is
+very elegant.  The authors do address some practical implementation
+concerns at the end - notably the clustering of computation into
+larger blocks - but I am still skeptical.  This may perform well
+enough on multicore hardware, but it seems like it would be hard to
+make the necessary transformations to produce efficient vectorised
+code.
+
 \end{document}
 
 %%% Local Variables: 
