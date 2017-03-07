@@ -293,6 +293,38 @@ since it contains a data conditional.  I also do not see how something
 like $filter$ could ever be handled this way, since it is technically
 data-sensitive, but still with useful known invariants.
 
+\begin{quote}
+  \fullcite{Brodman:2009:NAD:1855591.1855607}
+\end{quote}
+
+The authors present suggestions on data-parallel constructs, and the
+design of data-parallel programming languages.  One significant point
+is to describe a program as a sequence of parallel operations, such
+that the meaning of the program can be determined by ignoring the
+parallelism.  Parallelism thus becomes an operational issue, not a
+semantic one, as is proper.  The authors do not concern themselves
+overmuch with compiler optimisation, and rather focus on the selection
+of portable parallel ``operators'' that can be efficiently implemented
+on variety of platforms.
+
+The authors find inspiration on the selection of operators in three
+sources:
+
+\begin{itemize}
+\item Old functional language constructs (\texttt{map},
+  \texttt{reduce}) that are ``incidentally'' parallel (sometimes).
+\item Vector hardware and instructions.
+\item The data-parallel operators of existing high-level languages.
+\end{itemize}
+
+Most of these operate on flat data structures, with NESL as the
+notable exception.  The authors argue that this is insufficient, and
+present a concept of tiled parallel arrays as a programming model
+(they also mention the need sets, but they do not discuss how these
+could be decomposed).  The nested structure is mostly presented as a
+way to perform dynamic scheduling and load balancing, and less as a
+means of expressivity, but maybe that is implied.
+
 \section*{HIPERFIT reading group papers}
 
 \begin{quote}
@@ -1051,6 +1083,294 @@ larger blocks - but I am still skeptical.  This may perform well
 enough on multicore hardware, but it seems like it would be hard to
 make the necessary transformations to produce efficient vectorised
 code.
+
+\begin{quote}
+  \fullcite{Panchekha:2015:AIA:2813885.2737959}
+\end{quote}
+
+This is an amazingly well-written paper.  One of the most pleasurable
+reads I've had in a while.  It is even artifact-evaluated!  Top notch
+science here.
+
+The basic idea is to take a floating-point expression, generate a
+number of input points (256 in practice), and for each input point
+determine the difference between an arbitrary-precision computation
+and the fixed-precision floating-point computation, which then
+constitutes the error.  Herbie will evaluate the subexpressions of the
+original expression to determine where the error is introduced (that
+is, it's stochastic, not based on static analysis).  Rewrite rules are
+then applied to rewrite the erroneous expression to be more accurate -
+possibly only for certain ranges of the input.
+
+At all times, Herbie keeps a table of ``programs'' (really full
+expressions) - each of these is the most accurate for at least one of
+the input points.  Herbie extraccts one of these programs, then finds
+all ``locations'' inside of it - I assume this means pointers to
+subexpressions - and sort these by their local error, taking only the
+$M$ most erroneous.  Herbie then invokes a procedure called
+\texttt{recursive-rewrite}, which is given the program and the
+locations, and produces some more programs that are added to the
+table.  This procedure uses rewrite rules to improve accuracy.  Also,
+Herbie uses a similar procedure called \texttt{series-expansion}, that
+has the same interface, but tries to improve accuracy by
+series-expanding expressions.  This is all from Figure 2.
+
+I don't understand the definition of \texttt{recursive-rewrite} in
+Figure 4.  It does not seem to take a list of locations as its second
+argument.
+
+Invalid rewrite rules do not matter, because an invalid rule cannot
+improve accuracy, hence they will be discarded as simply not an
+improvement.  That's a cool detail!
+
+The authors mention that they must avoid false identities such as
+$\sqrt{x^{2}} = x$, which is only valid for non-negative $x$.  But
+surely such a rule could still be useful, as long as the final regime
+inference ensures that this version of the code is only used exactly
+when $0\leq x$?  It seems to me that it would, by the very virtue of
+the expression being very inaccurate for negative $x$.
+
+Overhead of generated code compared to the original is 40\% - but
+presumably this is only when changes are actually made, which in a
+large program is likely to only be a small fraction of the total code.
+The increased number of branches may hit harder on a vector machine.
+
+\begin{quote}
+  \fullcite{Lu:2010:SEP:1869389.1869392}
+\end{quote}
+
+The paper presents a GPU library for extended precision floating point
+numbers (greater than 64 bits).  Clearly this is less efficient than
+native numbers, but sometimes you gotta do what you gotta do, and the
+slowdown they get is about the same as that on a CPU (actually a
+little better it seems).  There are two forms of extended precision:
+
+\begin{description}
+\item[Multi-term,] in which the extended number is the sum of a
+  statically known number of native precision floats.  Implemented in
+  a library called QD, whose algorithms are used in this paper.  The
+  paper implements double-double (128 bits) and quad-double (256 bits)
+  numbers.
+\item[Multi-digit,] in which an array of digits is stored alongside a
+  single exponent.  This permits dynamic sizing of the number, like
+  common bignum integer implementations.  Implemented in a library
+  called ARPREC, whose algorithms are used in this paper.
+\end{description}
+
+I am totally confused by Algorithm 1.  What is $\oplus$ and $\ominus$?
+I think they are just plus and addition on floating-point numbers.
+
+The paper discusses not just the representation of single floats, but
+also array of floats, which are stored in transposed form to permit
+memory coalescing (see Figure 2 in the paper).  Strangely, they only
+report a factor-of-3 speedup, but if they only use four words per
+float, (corresponding to double-doubles), then this is about right:
+for a 16-thread warp, four of the 16 threads would still access within
+the same 16-word memory region.
+
+They talk about using local memory to offset register pressure, which
+sounds... wrong.
+
+In total, the paper is a fairly straightforward port of established
+extended-precision algorithms to the GPU.  Most of the paper consists
+of a fairly in-depth evaluation section that strongly supports the
+idea, and shows that performance is very good on the GPU (although I
+would have liked to see some comparisons to native floats).
+
+The code for QDR is located at
+\url{https://code.google.com/p/gpuprec/}.  I have been unable to
+locate the source for GARPREC, even though the repository claims to
+contain it.
+
+I did my own experiments on my Futhark implementation.  For computing
+\texttt{zipWith(+,as,bs)}, where arrays contain three million
+quad-doubles, I get the following runtimes:
+
+\begin{tabular}{l|l}
+  \hline
+  \textbf{Machine} & \textbf{Runtime} \\\hline
+  GeForce GTX 690 (\texttt{napoleon}) & 1794us \\
+  Sequential CPU (\texttt{napoleon}) & 24859us \\
+\end{tabular}
+
+This is a speedup of 13.47 over \textit{sequential} performance.  Note
+that the GPU has atrocious double-precision performance.
+
+\begin{tabular}{l|l}
+  \hline
+  Machine & Runtime \\\hline
+  AMD FirePro W8100 (\texttt{napoleon}) & 849us (best)
+\end{tabular}
+
+Surprisingly, the AMD GPU does little better, despite being much more
+powerful for double-precision.
+
+I suspect this is because we are bandwidth-bound anyway.  Let us
+calculate: The GTX 690 has a memory bandwidth of 192GiB/s (for one
+GPU).  It has single-precision performance of 5,621 GFLOPS, and
+double-precision at 1/24th (!!!) of that, which is 223 GFLOPS (come
+on).  This means you can deliver slightly less than one byte per
+instruction, or roughly one double for every eight instructions, or
+roughly two quad-doubles for every 64 instructions.  The question is
+then whether it takes more than 64 instructions to perform the add (it
+does), so it doesn't look memory-bound.  Of course, not all the
+operations are double-precicion, but the only integer operations are
+some simple comparisons and branches.
+
+The W8100 has 2,620 GFLOPS of double-precision performance and 320GB/s
+of memory bandwidth, which is one byte for about every eight
+instructions, or one double for every 64 instructions, or two
+quad-doubles for every 512 instructions.  Now, this may very well be
+quite memory-bound.  The W8100 has about 66\% more memory bandwidth
+than the GTX 690, and obtains a speedup of around 2.
+
+Let us consider the GPU in the paper: the GTX 280.  The paper reports
+a memory bandwidth of 110GiB/s and 90GFLOPS in double precision.  This
+leaves one byte for every instruction, and two quad-doubles every 64
+instructions.  Not particularly bandwidth-bound.  In the paper, they
+use a Q6600 CPU, which is 2007-era, whereas the GTX 280 is 2008-era.
+Not a big difference.
+
+Some more data:
+
+\begin{tabular}{l|l}
+  \hline
+  Machine & Runtime \\\hline
+  GTX 780 Ti (\texttt{gpu01-diku-apl}) & 820us
+\end{tabular}
+
+This is despite the GTX 670 Ti only being rated at 210GFLOPS in
+double-precision.
+
+Let us try dot product!  Same input data.
+
+\begin{tabular}{l|l}
+  \hline
+  Machine & Runtime \\\hline
+  AMD FirePro W8100 (\texttt{napoleon}) & 6314us \\
+  GTX 780 Ti (\texttt{gpu01-diku-apl}) & 5163us \\
+  Sequential CPU (\texttt{napoleon}) & 61001us \\
+\end{tabular}
+
+Now, these are total runtimes, but the actual reduce kernel is much
+faster on the W8100 (765us) than on the GTX 780 Ti (1721us).  No idea
+why the total runtimes are so different.
+
+\begin{quote}
+  \fullcite{Ragan-Kelley:2013:HLC:2491956.2462176}
+\end{quote}
+
+\begin{quote}
+  \fullcite{Fahndrich:2002:AFP:543552.512532}
+\end{quote}
+
+\begin{quote}
+  \fullcite{Tov:2011:PAT:1926385.1926436}
+\end{quote}
+
+\begin{quote}
+  \fullcite{Smetsers94guaranteeingsafe}
+\end{quote}
+
+Seems like a very similar approach to what we're doing in Futhark,
+although with a more complicated language.  Key quote:
+
+\begin{quote}
+  However, in some speciac cases destructive updates are safe,
+  e.g. when it is known that access on the original object is not
+  necessary in the future. We call such an object (locally) `unique'.
+\end{quote}
+
+The paper describes how uniqueness types are implemented in Concurrent
+Clean, and how they are used to handle in-place updates.  Papers on
+the same subject were used to originally develop the uniqueness types
+in Futhark in 2013.
+
+\begin{quote}
+  \fullcite{Leshchinskiy:2009:RYA:1506052.1506073}
+\end{quote}
+
+Fusion of bulk array updates.
+
+\begin{quote}
+  \fullcite{moseley2006out}
+\end{quote}
+
+Key sentence:
+
+\begin{quote}
+  The bottom line is that the more powerful a language (i.e. the more
+  that is possible within the language), the harder it is to
+  understand systems constructed in it.
+\end{quote}
+
+This also applies to how easily a compiler can optimise a program
+written in the language!
+
+\begin{quote}
+  \fullcite{Dubach:2012:CHL:2345156.2254066}
+\end{quote}
+
+Presents Lime, a ``Java-compatible language'', that targets execution
+on heterogenous systems.  It looks like an extension of Java, with
+build-in map/reduce facilities.  Syntactically and type-wise, nested
+parallelism seems to be permitted.  The programmer must indicate
+specific \textit{tasks}, in which the use of the map and reduce
+operators are detected by the compiler.  Lime maps some arrays (that
+are small) to private memory.  It caches in local memory using a
+technique similar to our loop tiling.  It may be somewhat more
+limited, as I'm not sure it does variance analysis.  Maybe won't work
+for matrix multiplication or LavaMD.  Lime also uses image/texture-
+and constant memory, which is pretty cool!
+
+Tested on three benchmarks from Parboil (CP, MRI-Q, RPES), two from
+Java Grande (Crypt and Series), and two hand-written (N-Body and
+Mosaic).
+
+It is not clear whether Lime exploits nested parallelism, but none of
+the benchmarks contain it.  Nothing on fusion.
+
+This paper is very well written.  It should be a model for study.
+
+\begin{quote}
+  \fullcite{Steuwer:2017:LFD:3049832.3049841}
+\end{quote}
+
+A paper on the OpenCL-specific variant of the Lift IR, on which
+OpenCL-aware optimisations can be performed.  The IR is used to
+represent single OpenCL kernels.  Does not use a fixed strategy for
+optimisation.  The paper is about how the IR is compiled to actual
+code, as well as a demonstration that the IR is flexible enough to
+represent certain hand-written kernels.  At some point, higher-level
+IR is translated to this, perhaps by a method similar to Futhark's
+kernel extraction.  Like Futhark, Lift is also based on the lambda
+calculus.  Application-specific scalar code embedded as C functions.
+A special \texttt{slide} construct used for stencils (but without
+host-level code for the time loop, how can this be optimised?).  Lift
+OpenCL IR is significantly more low-level than Futhark, but could
+conceivably be used as a target for our kernel extraction algorithm.
+They have \textit{views}, which serve a purpose similar to our index
+functions.  Views permit an array to have several underlying memory
+blocks; index functions do not.  They use this to implement
+\texttt{zip}, which we do with source code transformation.  The Lift
+\texttt{toLocal} pattern is similar to our \texttt{combine}.  They do
+double buffering with point swapping---embarassingly, we do not.
+
+\begin{quote}
+  \fullcite{Cunningham:2011:GPH:2212736.2212744}
+\end{quote}
+
+A paper on compiling X10 (an IBM PGAS language, like Chapel) to CUDA.
+X10 is not itself a GPU language, and seems to focus on distributed
+and heterogeneous computing.  More control than e.g. Futhark.  They
+call it ``APGAS'', not just ``PGAS''.  Threads, blocks, barriers,
+constant memory, etc. can be expressed directly in X10.  In fact,
+\textit{must} be---code must be GPU-aware.  Cleanly handles clusters
+of GPUs.  Memory must be pre-allocated using special functions, and
+manually freed.  No nested parallelism.  Programmers must be aware of
+all low-level performance effects, e.g. coalescing and bank conflicts.
+No high-level optimisations; only constant folding is mentioned.  In
+X10 terms, each GPU is one ``place''.
 
 \end{document}
 
